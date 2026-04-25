@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LD Flow Sheet</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background: #f9f9f9;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#titleInput {
+    font-size: 1.2em;
+    padding: 6px;
+    width: 320px;
+}
+
+.controls {
+    text-align: center;
+    margin-bottom: 15px;
+}
+
+button {
+    padding: 8px 12px;
+    margin: 4px;
+    cursor: pointer;
+}
+
+.scroll-container {
+    overflow-x: auto;
+    background: white;
+    border: 2px solid #333;
+}
+
+.flowsheet {
+    display: flex;
+    gap: 12px;
+    padding: 20px;
+    min-width: 2000px;
+}
+
+.column {
+    flex: 1;
+    min-width: 280px;
+}
+
+.box {
+    border: 2px solid #333;
+    background: white;
+    min-height: 160px;
+    margin-bottom: 12px;
+    padding: 10px;
+}
+
+.cx {
+    background: #e6f7ff;
+}
+
+.content {
+    min-height: 120px;
+    border: 1px dashed #aaa;
+    padding: 8px;
+    outline: none;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+    <h1>Lincoln-Douglas Debate Flow Sheet</h1>
+    <input id="titleInput" placeholder="Flowsheet title...">
+</div>
+
+<div class="controls">
+    <button onclick="clearDocument()">Clear</button>
+    <button onclick="saveFile()">Save</button>
+    <button onclick="loadFile()">Load</button>
+    <input type="file" id="fileInput" style="display:none">
+</div>
+
+<div class="scroll-container">
+<div class="flowsheet">
+
+<div class="column">
+    <div class="box">
+        <h2>1AC</h2>
+        <div class="content" id="box_1" contenteditable="true"></div>
+    </div>
+    <div class="box cx">
+        <h2>CX Neg → Aff</h2>
+        <div class="content" id="box_2" contenteditable="true"></div>
+    </div>
+</div>
+
+<div class="column">
+    <div class="box">
+        <h2>1NC</h2>
+        <div class="content" id="box_3" contenteditable="true"></div>
+    </div>
+    <div class="box cx">
+        <h2>CX Aff → Neg</h2>
+        <div class="content" id="box_4" contenteditable="true"></div>
+    </div>
+</div>
+
+<div class="column">
+    <div class="box">
+        <h2>1AR</h2>
+        <div class="content" id="box_5" contenteditable="true"></div>
+    </div>
+</div>
+<div class="column">
+    <div class="box">
+        <h2>NR</h2>
+        <div class="content" id="box_6" contenteditable="true"></div>
+    </div>
+</div>
+<div class="column">
+    <div class="box">
+        <h2>2AR</h2>
+        <div class="content" id="box_7" contenteditable="true"></div>
+    </div>
+</div>
+
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+<script>
+const ids = ["box_1","box_2","box_3","box_4","box_5","box_6","box_7"];
+const titleInput = document.getElementById("titleInput");
+const fileInput = document.getElementById("fileInput");
+let isDirty = false;
+
+// ---------- COOKIE ----------
+function saveToCookie() {
+    const data = {
+        title: titleInput.value,
+        boxes: ids.map(id => document.getElementById(id).innerHTML)
+    };
+    document.cookie = "flow=" + encodeURIComponent(JSON.stringify(data)) + "; path=/; max-age=31536000";
+}
+
+function loadFromCookie() {
+    const cookies = document.cookie.split("; ");
+    for (let c of cookies) {
+        if (c.startsWith("flow=")) {
+            return JSON.parse(decodeURIComponent(c.split("=")[1]));
+        }
+    }
+    return null;
+}
+
+// ---------- AUTOSAVE ----------
+ids.forEach(id => {
+    document.getElementById(id).addEventListener("input", () => {
+        saveToCookie();
+        isDirty = true;
+    });
+});
+
+titleInput.addEventListener("input", saveToCookie);
+
+// ---------- LOAD COOKIE ----------
+window.onload = () => {
+    const saved = loadFromCookie();
+    if (saved) {
+        titleInput.value = saved.title || "";
+        saved.boxes.forEach((c, i) => {
+            document.getElementById(ids[i]).innerHTML = c;
+        });
+    }
+};
+
+// ---------- CLEAR ----------
+function clearDocument() {
+    if (confirm("Clear entire flowsheet?")) {
+        ids.forEach(id => document.getElementById(id).innerHTML = "");
+        saveToCookie();
+        isDirty = false;
+    }
+}
+
+// ---------- SAVE FILE ----------
+async function saveFile() {
+    const zip = new JSZip();
+    const title = titleInput.value || "flowsheet";
+
+    ids.forEach((id, i) => {
+        const text = document.getElementById(id).innerText;
+        zip.file(`${id}.txt`, text);
+    });
+
+    zip.file("title.txt", title);
+
+    const blob = await zip.generateAsync({type:"blob"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = title + ".flowsheet";
+    a.click();
+
+    isDirty = false;
+}
+
+// ---------- LOAD FILE ----------
+function loadFile() {
+    fileInput.click();
+}
+
+fileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const zip = await JSZip.loadAsync(file);
+
+    for (let name of Object.keys(zip.files)) {
+        if (ids.includes(name.replace(".txt",""))) {
+            const text = await zip.files[name].async("string");
+            document.getElementById(name.replace(".txt","")).innerText = text;
+        }
+        if (name === "title.txt") {
+            titleInput.value = await zip.files[name].async("string");
+        }
+    }
+
+    saveToCookie();
+    isDirty = false;
+});
+
+// ---------- WARNING ----------
+window.addEventListener("beforeunload", (e) => {
+    if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+    }
+});
+</script>
+
+</body>
+</html>
